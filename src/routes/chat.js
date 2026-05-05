@@ -4,7 +4,6 @@ const axios = require('axios');
 const supabase = require('../services/supabase');
 const { getEmbedding } = require('../services/embedding');
 const { analyzeEmotion, summarize } = require('../services/llm');
-const { calculateDecayScore } = require('../utils/decay');
 
 // 对话历史（内存存储，重启后清空）
 let conversationHistory = [];
@@ -12,10 +11,10 @@ let conversationHistory = [];
 // 系统提示词
 const SYSTEM_PROMPT = require('../config/prompt');
 
-// 对话接口 - 兼容OpenAI格式
+// 对话接口 - 兼容OpenAI格式 + 流式响应
 router.post('/', async (req, res) => {
   try {
-    const { messages: reqMessages, model } = req.body;
+    const { messages: reqMessages, model, stream } = req.body;
     
     // 兼容OpenAI格式：从messages数组提取最后一条用户消息
     const lastMessage = reqMessages && reqMessages.length > 0 
@@ -27,32 +26,31 @@ router.post('/', async (req, res) => {
     }
     
     // 1. 检索相关记忆
-    const queryEmbedding = await getEmbedding(lastMessage);
-    const embeddingStr = `[${queryEmbedding.join(',')}]`;
-
-    const { data: relatedMemories, error } = await supabase
-      .rpc('match_memories', {
-        query_embedding: embeddingStr,
-        match_threshold: 0.3,
-        match_count: 10
-      });
-
-    if (error) {
-      console.error('检索记忆失败:', error);
-    }
-    
-    // 2. 构建记忆提示
     let memoryPrompt = '';
-    if (relatedMemories && relatedMemories.length > 0) {
-      const memoryTexts = relatedMemories
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, 3)
-        .map(m => `- ${m.content}`)
-        .join('\n');
-      memoryPrompt = `\n\n[相关记忆 - 必须基于这些记忆回答，不要编造]\n${memoryTexts}`;
+    try {
+      const queryEmbedding = await getEmbedding(lastMessage);
+      const embeddingStr = `[${queryEmbedding.join(',')}]`;
+
+      const { data: relatedMemories, error } = await supabase
+        .rpc('match_memories', {
+          query_embedding: embeddingStr,
+          match_threshold: 0.3,
+          match_count: 10
+        });
+
+      if (!error && relatedMemories && relatedMemories.length > 0) {
+        const memoryTexts = relatedMemories
+          .sort((a, b) => b.similarity - a.similarity)
+          .slice(0, 3)
+          .map(m => `- ${m.content}`)
+          .join('\n');
+        memoryPrompt = `\n\n[相关记忆 - 必须基于这些记忆回答，不要编造]\n${memoryTexts}`;
+      }
+    } catch (err) {
+      console.error('检索记忆失败:', err.message);
     }
 
-    // 3. 构建消息列表
+    // 2. 构建消息列表
     const userPrompt = memoryPrompt 
       ? `[重要提醒：上面提供了相关记忆，只使用这些记忆回答。不要添加任何记忆里没有的细节。]\n\n${lastMessage}`
       : lastMessage;
@@ -63,55 +61,91 @@ router.post('/', async (req, res) => {
       { role: 'user', content: userPrompt }
     ];
 
-    // 4. 调用LLM
-    const response = await axios.post(
-      `${process.env.SILICON_BASE_URL}/chat/completions`,
-      {
-        model: model || 'Qwen/Qwen2.5-14B-Instruct',
-        messages,
-        temperature: 0.5,
-        repetition_penalty: 1.1
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${process.env.SILICON_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    const reply = response.data.choices[0].message.content;
+    // 3. 调用LLM
+    const modelName = model || 'Qwen/Qwen2.5-14B-Instruct';
     
-    // 5. 更新对话历史
-    conversationHistory.push(
-      { role: 'user', content: lastMessage },
-      { role: 'assistant', content: reply }
-    );
-    
-    // 6. 异步存储记忆（不阻塞回复）
-    storeMemory(lastMessage, 'user');
-    storeMemory(reply, 'assistant');
-    
-    // 7. 返回OpenAI兼容格式
-    res.json({
-      id: `chatcmpl-${Date.now()}`,
-      object: 'chat.completion',
-      created: Math.floor(Date.now() / 1000),
-      model: model || 'Qwen/Qwen2.5-14B-Instruct',
-      choices: [{
-        index: 0,
-        message: {
-          role: 'assistant',
-          content: reply
+    if (stream) {
+      // 流式响应
+      const response = await axios.post(
+        `${process.env.SILICON_BASE_URL}/chat/completions`,
+        {
+          model: modelName,
+          messages,
+          temperature: 0.5,
+          repetition_penalty: 1.1,
+          stream: true
         },
-        finish_reason: 'stop'
-      }],
-      usage: {
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        total_tokens: 0
-      }
-    });
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.SILICON_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          responseType: 'stream'
+        }
+      );
+
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      response.data.on('data', (chunk) => {
+        res.write(chunk);
+      });
+
+      response.data.on('end', () => {
+        res.end();
+      });
+    } else {
+      // 非流式响应
+      const response = await axios.post(
+        `${process.env.SILICON_BASE_URL}/chat/completions`,
+        {
+          model: modelName,
+          messages,
+          temperature: 0.5,
+          repetition_penalty: 1.1
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.SILICON_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const reply = response.data.choices[0].message.content;
+      
+      // 更新对话历史
+      conversationHistory.push(
+        { role: 'user', content: lastMessage },
+        { role: 'assistant', content: reply }
+      );
+      
+      // 异步存储记忆
+      storeMemory(lastMessage, 'user');
+      storeMemory(reply, 'assistant');
+      
+      // 返回OpenAI兼容格式
+      res.json({
+        id: `chatcmpl-${Date.now()}`,
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model: modelName,
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: reply
+          },
+          finish_reason: 'stop'
+        }],
+        usage: {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0
+        }
+      });
+    }
     
   } catch (err) {
     console.error('Chat error:', err.response?.data || err.message);
@@ -123,7 +157,6 @@ router.post('/', async (req, res) => {
       } 
     });
   }
-
 });
 
 // 清空对话历史
