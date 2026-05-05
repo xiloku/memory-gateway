@@ -17,7 +17,12 @@ const SYSTEM_PROMPT = require('../config/prompt');
 // 对话接口
 router.post('/', async (req, res) => {
   try {
-    const { message } = req.body;
+    // 兼容OpenAI格式
+const messages = req.body.messages;
+const message = messages && messages.length > 0 
+  ? messages[messages.length - 1].content 
+  : req.body.message;
+
     
 // 1. 检索相关记忆
 const queryEmbedding = await getEmbedding(message);
