@@ -5,11 +5,34 @@ const supabase = require('../services/supabase');
 const { getEmbedding } = require('../services/embedding');
 const { analyzeEmotion, summarize } = require('../services/llm');
 
-// 对话历史（内存存储，重启后清空）
-let conversationHistory = [];
-
 // 系统提示词
 const SYSTEM_PROMPT = require('../config/prompt');
+
+// 从数据库加载对话历史
+async function loadConversationHistory() {
+  try {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('role, content')
+      .order('created_at', { ascending: true })
+      .limit(20);
+    
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('加载对话历史失败:', err.message);
+    return [];
+  }
+}
+
+// 保存对话到数据库
+async function saveConversation(role, content) {
+  try {
+    await supabase.from('conversations').insert({ role, content });
+  } catch (err) {
+    console.error('保存对话失败:', err.message);
+  }
+}
 
 // 对话接口 - 兼容OpenAI格式 + 流式响应
 router.post('/', async (req, res) => {
@@ -50,7 +73,10 @@ router.post('/', async (req, res) => {
       console.error('检索记忆失败:', err.message);
     }
 
-    // 2. 构建消息列表
+    // 2. 加载对话历史
+    const conversationHistory = await loadConversationHistory();
+    
+    // 3. 构建消息列表
     const userPrompt = memoryPrompt 
       ? `[重要提醒：上面提供了相关记忆，只使用这些记忆回答。不要添加任何记忆里没有的细节。]\n\n${lastMessage}`
       : lastMessage;
@@ -61,7 +87,7 @@ router.post('/', async (req, res) => {
       { role: 'user', content: userPrompt }
     ];
 
-    // 3. 调用LLM
+    // 4. 调用LLM
     const modelName = model || 'Qwen/Qwen2.5-14B-Instruct';
     
     if (stream) {
@@ -88,11 +114,36 @@ router.post('/', async (req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
+      let fullReply = '';
+      
       response.data.on('data', (chunk) => {
+        const text = chunk.toString();
         res.write(chunk);
+        
+        // 提取流式内容用于存储
+        const lines = text.split('\n').filter(line => line.trim() !== '');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              const delta = parsed.choices?.[0]?.delta?.content;
+              if (delta) fullReply += delta;
+            } catch (e) {}
+          }
+        }
       });
 
       response.data.on('end', () => {
+        // 保存对话到数据库
+        saveConversation('user', lastMessage);
+        saveConversation('assistant', fullReply);
+        
+        // 异步存储记忆
+        storeMemory(lastMessage, 'user');
+        storeMemory(fullReply, 'assistant');
+        
         res.end();
       });
     } else {
@@ -115,11 +166,9 @@ router.post('/', async (req, res) => {
 
       const reply = response.data.choices[0].message.content;
       
-      // 更新对话历史
-      conversationHistory.push(
-        { role: 'user', content: lastMessage },
-        { role: 'assistant', content: reply }
-      );
+      // 保存对话到数据库
+      saveConversation('user', lastMessage);
+      saveConversation('assistant', reply);
       
       // 异步存储记忆
       storeMemory(lastMessage, 'user');
@@ -160,9 +209,13 @@ router.post('/', async (req, res) => {
 });
 
 // 清空对话历史
-router.delete('/history', (req, res) => {
-  conversationHistory = [];
-  res.json({ success: true });
+router.delete('/history', async (req, res) => {
+  try {
+    await supabase.from('conversations').delete().neq('id', 0);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // 获取模型列表 - OpenAI兼容格式
