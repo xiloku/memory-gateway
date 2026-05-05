@@ -12,35 +12,36 @@ let conversationHistory = [];
 // 系统提示词
 const SYSTEM_PROMPT = require('../config/prompt');
 
-
-
-// 对话接口
+// 对话接口 - 兼容OpenAI格式
 router.post('/', async (req, res) => {
   try {
-    // 兼容OpenAI格式
-const messages = req.body.messages;
-const message = messages && messages.length > 0 
-  ? messages[messages.length - 1].content 
-  : req.body.message;
-
+    const { messages: reqMessages, model } = req.body;
     
-// 1. 检索相关记忆
-const queryEmbedding = await getEmbedding(message);
-const embeddingStr = `[${queryEmbedding.join(',')}]`;
-
-const { data: relatedMemories, error } = await supabase
-  .rpc('match_memories', {
-    query_embedding: embeddingStr,
-    match_threshold: 0.3,
-    match_count: 10
-  });
-
-if (error) {
-  console.error('检索记忆失败:', error);
-}
-
+    // 兼容OpenAI格式：从messages数组提取最后一条用户消息
+    const lastMessage = reqMessages && reqMessages.length > 0 
+      ? reqMessages[reqMessages.length - 1].content 
+      : '';
     
-// 2. 构建记忆提示
+    if (!lastMessage) {
+      return res.status(400).json({ error: { message: "No message provided" } });
+    }
+    
+    // 1. 检索相关记忆
+    const queryEmbedding = await getEmbedding(lastMessage);
+    const embeddingStr = `[${queryEmbedding.join(',')}]`;
+
+    const { data: relatedMemories, error } = await supabase
+      .rpc('match_memories', {
+        query_embedding: embeddingStr,
+        match_threshold: 0.3,
+        match_count: 10
+      });
+
+    if (error) {
+      console.error('检索记忆失败:', error);
+    }
+    
+    // 2. 构建记忆提示
     let memoryPrompt = '';
     if (relatedMemories && relatedMemories.length > 0) {
       const memoryTexts = relatedMemories
@@ -51,10 +52,10 @@ if (error) {
       memoryPrompt = `\n\n[相关记忆 - 必须基于这些记忆回答，不要编造]\n${memoryTexts}`;
     }
 
-// 3. 构建消息列表
+    // 3. 构建消息列表
     const userPrompt = memoryPrompt 
-      ? `[重要提醒：上面提供了相关记忆，只使用这些记忆回答。不要添加任何记忆里没有的细节。]\n\n${message}`
-      : message;
+      ? `[重要提醒：上面提供了相关记忆，只使用这些记忆回答。不要添加任何记忆里没有的细节。]\n\n${lastMessage}`
+      : lastMessage;
     
     const messages = [
       { role: 'system', content: SYSTEM_PROMPT + memoryPrompt },
@@ -62,12 +63,11 @@ if (error) {
       { role: 'user', content: userPrompt }
     ];
 
-    
-// 4. 调用LLM
+    // 4. 调用LLM
     const response = await axios.post(
       `${process.env.SILICON_BASE_URL}/chat/completions`,
       {
-        model: 'Qwen/Qwen2.5-14B-Instruct',
+        model: model || 'Qwen/Qwen2.5-14B-Instruct',
         messages,
         temperature: 0.5,
         repetition_penalty: 1.1
@@ -84,19 +84,42 @@ if (error) {
     
     // 5. 更新对话历史
     conversationHistory.push(
-      { role: 'user', content: message },
+      { role: 'user', content: lastMessage },
       { role: 'assistant', content: reply }
     );
     
     // 6. 异步存储记忆（不阻塞回复）
-    storeMemory(message, 'user');
+    storeMemory(lastMessage, 'user');
     storeMemory(reply, 'assistant');
     
-    // 7. 返回回复
-    res.json({ success: true, reply, memories: relatedMemories?.length || 0 });
+    // 7. 返回OpenAI兼容格式
+    res.json({
+      id: `chatcmpl-${Date.now()}`,
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model: model || 'Qwen/Qwen2.5-14B-Instruct',
+      choices: [{
+        index: 0,
+        message: {
+          role: 'assistant',
+          content: reply
+        },
+        finish_reason: 'stop'
+      }],
+      usage: {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0
+      }
+    });
     
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error('Chat error:', err.response?.data || err.message);
+    res.status(500).json({ 
+      error: { 
+        message: err.response?.data?.error?.message || err.message 
+      } 
+    });
   }
 });
 
@@ -106,15 +129,15 @@ router.delete('/history', (req, res) => {
   res.json({ success: true });
 });
 
-// 获取模型列表
+// 获取模型列表 - OpenAI兼容格式
 router.get('/models', (req, res) => {
   res.json({
+    object: 'list',
     data: [
       { id: 'Qwen/Qwen2.5-14B-Instruct', object: 'model', owned_by: 'siliconflow' }
     ]
   });
 });
-
 
 // 异步存储记忆
 async function storeMemory(content, role) {
