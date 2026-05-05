@@ -13,6 +13,25 @@ app.use(express.json());
 app.use('/api/memory', memoryRouter);
 app.use('/api/chat', chatRouter);
 
+// 添加OpenAI兼容的models路由
+app.get('/v1/models', (req, res) => {
+  res.json({
+    object: 'list',
+    data: [
+      { id: 'Qwen/Qwen2.5-14B-Instruct', object: 'model', owned_by: 'siliconflow' }
+    ]
+  });
+});
+
+app.get('/models', (req, res) => {
+  res.json({
+    object: 'list',
+    data: [
+      { id: 'Qwen/Qwen2.5-14B-Instruct', object: 'model', owned_by: 'siliconflow' }
+    ]
+  });
+});
+
 // 导出给Vercel
 module.exports = app;
 

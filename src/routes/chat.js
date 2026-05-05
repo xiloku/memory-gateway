@@ -117,10 +117,13 @@ router.post('/', async (req, res) => {
     console.error('Chat error:', err.response?.data || err.message);
     res.status(500).json({ 
       error: { 
-        message: err.response?.data?.error?.message || err.message 
+        message: err.response?.data?.error?.message || err.message,
+        type: err.response?.data?.error?.type || 'internal_error',
+        details: err.response?.data || null
       } 
     });
   }
+
 });
 
 // 清空对话历史
