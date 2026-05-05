@@ -88,7 +88,8 @@ router.post('/', async (req, res) => {
     ];
 
     // 4. 调用LLM
-    const modelName = model || 'Qwen/Qwen2.5-14B-Instruct';
+    const modelName = model || 'Pro/zai-org/GLM-5.1';
+
     
     if (stream) {
       // 流式响应
@@ -223,10 +224,11 @@ router.get('/models', (req, res) => {
   res.json({
     object: 'list',
     data: [
-      { id: 'Qwen/Qwen2.5-14B-Instruct', object: 'model', owned_by: 'siliconflow' }
+      { id: 'Pro/zai-org/GLM-5.1', object: 'model', owned_by: 'zhipu' }
     ]
   });
 });
+
 
 // 异步存储记忆
 async function storeMemory(content, role) {

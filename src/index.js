@@ -18,7 +18,7 @@ app.get('/v1/models', (req, res) => {
   res.json({
     object: 'list',
     data: [
-      { id: 'Qwen/Qwen2.5-14B-Instruct', object: 'model', owned_by: 'siliconflow' }
+      { id: 'Pro/zai-org/GLM-5.1', object: 'model', owned_by: 'zhipu' }
     ]
   });
 });
@@ -27,10 +27,11 @@ app.get('/models', (req, res) => {
   res.json({
     object: 'list',
     data: [
-      { id: 'Qwen/Qwen2.5-14B-Instruct', object: 'model', owned_by: 'siliconflow' }
+      { id: 'Pro/zai-org/GLM-5.1', object: 'model', owned_by: 'zhipu' }
     ]
   });
 });
+
 
 // 导出给Vercel
 module.exports = app;
