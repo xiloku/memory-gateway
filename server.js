@@ -133,7 +133,7 @@ async function saveMemories(content, env) {
           if (updateData.is_pinned) updateData.importance = 10;
         }
         const digestedMatch = lineContent.match(/\[DG:(true|false)\]/);
-        if (digestedMatch) updateData.isdigested = digestedMatch[1] === 'true';
+        if (digestedMatch) updateData.is_digested = digestedMatch[1] === 'true';
         const sourceMatch = lineContent.match(/\[S:([^\]]+)\]/);
         if (sourceMatch) updateData.source_bucket_id = sourceMatch[1];
 
@@ -142,7 +142,7 @@ async function saveMemories(content, env) {
         const currentArousal = updateData.arousal || 0.5;
         const currentIsPinned = updateData.is_pinned || false;
         const currentIsResolved = updateData.is_resolved || false;
-        const currentIsDigested = updateData.isdigested || false;
+        const currentIsDigested = updateData.is_digested || false;
         updateData.decay_score = calculateDecayScore(currentImportance, currentArousal, currentIsPinned, currentIsResolved, currentIsDigested);
 
         await safeFetch(`${env.SUPABASE_URL}/rest/v1/memories?id=eq.${id}`, {
@@ -212,7 +212,7 @@ async function saveMemories(content, env) {
             resolved: isResolved,
             is_pinned: isPinned,
             is_feel: isFeel,
-            isdigested: isDigested,
+            is_digested: isDigested,
             source_bucket_id: sourceBucketId,
             activation_count: 0,
             access_count: 0,
@@ -252,7 +252,7 @@ async function saveMemories(content, env) {
             resolved: false,
             is_pinned: false,
             is_feel: false,
-            isdigested: false,
+            is_digested: false,
             source_bucket_id: null,
             activation_count: 0,
             access_count: 0,
