@@ -1,3 +1,4 @@
+
 // server.js
 import Fastify from 'fastify';
 import SYSTEM_PROMPT from './src/config/prompt.js';  // 这一行是修改重点
@@ -99,7 +100,8 @@ async function saveMemories(content, env) {
     if (!line.startsWith('-') && !line.startsWith('•') && !line.startsWith('*')) continue;
 
     try {
-      const lineContent = line.replace(/^[-•*]\s*/, '');
+      let lineContent = line.replace(/^[-•*]\s*/, '');
+lineContent = '- ' + lineContent.replace(/^[-•*]\s*/, '');
 
       // --- UPDATE ---
       const updateMatch = lineContent.match(/\[UPDATE:(\d+)\](.+)/);
