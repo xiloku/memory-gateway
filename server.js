@@ -1,6 +1,6 @@
 // server.js
 import Fastify from 'fastify';
-import SYSTEM_PROMPT from './config/prompt.js';  // 这一行是修改重点
+import SYSTEM_PROMPT from './src/config/prompt.js';  // 这一行是修改重点
 
 // 加载系统提示词（prompt.js）
 
