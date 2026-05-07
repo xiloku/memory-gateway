@@ -81,6 +81,12 @@ async function saveContext(messages, env) {
 
 async function saveMemories(content, env) {
   console.log('=== saveMemories called ===');
+  function formatTags(rawTags) {
+    if (!rawTags || typeof rawTags !== 'string') return null;
+    if (rawTags.startsWith('{') && rawTags.endsWith('}')) return rawTags;
+    const items = rawTags.split(',').map(t => t.trim()).filter(t => t);
+    return '{' + items.map(t => '"' + t.replace(/"/g, '\\"') + '"').join(',') + '}';
+  }
   const blockStart = '<memory>';
   const blockEnd = '</memory>';
   const startIdx = content.indexOf(blockStart);
