@@ -58,7 +58,7 @@ async function getEmbedding(text, apiKey) {
 async function saveContext(messages, env) {
   for (const msg of messages) {
     if (msg.role === 'user' || msg.role === 'assistant') {
-      await safeFetch(`${env.SUPABASE_URL}/rest/v1/contexts`, {
+      await safeFetch(`${env.SUPABASE_URL}/rest/v1/conversations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -69,7 +69,7 @@ async function saveContext(messages, env) {
       }).catch(e => console.error('Context save failed:', e.message));
     }
   }
-  await safeFetch(`${env.SUPABASE_URL}/rest/v1/rpc/clean_old_contexts`, {
+  await safeFetch(`${env.SUPABASE_URL}/rest/v1/rpc/clean_old_conversations`, {
     method: 'POST',
     headers: {
       'apikey': env.SUPABASE_KEY,
@@ -342,7 +342,7 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
   let recentContext = [];
   try {
     const ctxResponse = await safeFetch(
-      `${process.env.SUPABASE_URL}/rest/v1/contexts?select=role,content&order=created_at.desc&limit=20`,
+      `${process.env.SUPABASE_URL}/rest/v1/conversations?select=role,content&order=created_at.desc&limit=20`,
       { headers: { apikey: process.env.SUPABASE_KEY, Authorization: `Bearer ${process.env.SUPABASE_KEY}` } }
     );
     const ctxData = await ctxResponse.json();
