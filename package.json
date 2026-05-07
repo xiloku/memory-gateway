@@ -1,5 +1,4 @@
 {
-<<<<<<< HEAD
   "name": "ai-memory-service",
   "version": "1.0.0",
   "private": true,
@@ -8,28 +7,5 @@
   },
   "dependencies": {
     "fastify": "^4.28.0"
-=======
-  "name": "memory-gateway",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-  "start": "node src/index.js",
-  "dev": "nodemon src/index.js"
-},
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "@supabase/supabase-js": "^2.105.3",
-    "axios": "^1.16.0",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.14"
->>>>>>> e5e1b0bdfd530359e74ba5083aadac776e6e4fdd
   }
 }
