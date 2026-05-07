@@ -107,7 +107,7 @@ async function saveMemories(content, env) {
         const id = parseInt(updateMatch[1]);
         const newContent = updateMatch[2].trim();
         const embedding = await getEmbedding(newContent, env.SILICON_API_KEY);
-        const updateData = { content: newContent, embedding, update_at: new Date().toISOString() };
+        const updateData = { content: newContent, embedding, updated_at: new Date().toISOString() };
 
         // 解析所有可能标签
         const valenceMatch = lineContent.match(/\[V:([\d.]+)\]/);
