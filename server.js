@@ -463,7 +463,12 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
 
 // 启动服务
 const start = async () => {
-  try {
+  try {// 临时测试路由：验证记忆写入是否正常
+fastify.get('/test-write', async (request, reply) => {
+  const testContent = `<memory>\n- [2024-05-20][V:0.9][A:0.8][I:7][D:测试] 这是一条强制写入测试，请忽略\n</memory>`;
+  await saveMemories(testContent, process.env);
+  reply.send({ status: 'ok', message: 'Memory write test triggered. Check Supabase.' });
+});
     await fastify.listen({ port: 3000, host: '0.0.0.0' });
     fastify.log.info('AI Memory Service running on port 3000');
   } catch (err) {
