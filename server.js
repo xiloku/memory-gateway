@@ -3,7 +3,6 @@ import Fastify from 'fastify';
 import SYSTEM_PROMPT from './config/prompt.js';  // 这一行是修改重点
 
 // 加载系统提示词（prompt.js）
-const SYSTEM_PROMPT = (await readFile(new URL('./config/prompt.js', import.meta.url), 'utf8')).replace('export default ', '').trim();
 
 const fastify = Fastify({ logger: true });
 
