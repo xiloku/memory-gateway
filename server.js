@@ -149,7 +149,6 @@ async function saveMemories(content, env, memoryIds) {
       const updateMatch = lineContent.match(/\[UPDATE:(\d+)\](.+)/);
       if (updateMatch) {
         console.log('DEBUG: matched UPDATE, id =', updateMatch[1]);
-        const id = parseInt(updateMatch[1]);
         const seq = parseInt(updateMatch[1]);
         const id = memoryIds[seq - 1];  // 将序号转为真实 UUID
         if (!id) {
@@ -212,7 +211,6 @@ async function saveMemories(content, env, memoryIds) {
       const deleteMatch = lineContent.match(/\[DELETE:(\d+)\]/);
       if (deleteMatch) {
         console.log('DEBUG: matched DELETE, id =', deleteMatch[1]);
-        const id = parseInt(deleteMatch[1]);
         const seq = parseInt(deleteMatch[1]);
         const id = memoryIds[seq - 1];
         if (!id) {
