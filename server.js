@@ -79,7 +79,7 @@ async function saveContext(messages, env) {
   }).catch(e => console.error('Context clean failed:', e.message));
 }
 
-async function saveMemories(content, env) {
+async function saveMemories(content, env, memoryIds) {
   console.log('=== saveMemories called ===');
   console.log('DEBUG: content length =', content.length);
   console.log('DEBUG: content last 800 chars:', JSON.stringify(content.slice(-800)));
@@ -150,6 +150,12 @@ async function saveMemories(content, env) {
       if (updateMatch) {
         console.log('DEBUG: matched UPDATE, id =', updateMatch[1]);
         const id = parseInt(updateMatch[1]);
+        const seq = parseInt(updateMatch[1]);
+        const id = memoryIds[seq - 1];  // 将序号转为真实 UUID
+        if (!id) {
+          console.log('DEBUG: invalid sequence number for UPDATE:', seq);
+          continue;
+        }
         const newContent = updateMatch[2].trim();
         const embedding = await getEmbedding(newContent, env.SILICON_API_KEY);
         const updateData = { content: newContent, embedding, updated_at: new Date().toISOString() };
@@ -207,6 +213,12 @@ async function saveMemories(content, env) {
       if (deleteMatch) {
         console.log('DEBUG: matched DELETE, id =', deleteMatch[1]);
         const id = parseInt(deleteMatch[1]);
+        const seq = parseInt(deleteMatch[1]);
+        const id = memoryIds[seq - 1];
+        if (!id) {
+          console.log('DEBUG: invalid sequence number for DELETE:', seq);
+          continue;
+        }
         await safeFetch(`${env.SUPABASE_URL}/rest/v1/memories?id=eq.${id}`, {
           method: 'DELETE',
           headers: {
@@ -362,8 +374,8 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
           if (a.is_resolved && !b.is_resolved) return 1;
           return (b.decay_score || 0) - (a.decay_score || 0);
         });
-        memoryContext = memories.map(m => {
-          let line = `${m.id}.[${m.date}]${m.content}`;
+        memoryContext = memories.map((m, idx) => {
+          let line = `${idx + 1}.[${m.date}]${m.content}`;
           if (m.domain) line += ` [${m.domain}]`;
           if (m.is_feel) line += ' [Feel]';
           if (m.is_pinned) line += ' [Pinned]';
@@ -480,7 +492,7 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
               reply.raw.write('data: [DONE]\n\n');
               reply.raw.end();
               saveContext([{ role: 'assistant', content: fullContent }], process.env).catch(() => {});
-              saveMemories(fullContent, process.env).catch(() => {});
+          saveMemories(fullContent, process.env, memoryIds).catch(() => {});
               return;
             }
             try {
@@ -495,7 +507,7 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
         }
         if (fullContent) {
           saveContext([{ role: 'assistant', content: fullContent }], process.env).catch(() => {});
-          saveMemories(fullContent, process.env).catch(() => {});
+          saveMemories(fullContent, process.env, memoryIds).catch(() => {});
         }
       };
 
@@ -506,7 +518,7 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
       const content = data.choices?.[0]?.message?.content || '';
       if (content) {
         saveContext([{ role: 'assistant', content }], process.env).catch(() => {});
-        saveMemories(content, process.env).catch(() => {});
+        saveMemories(content, process.env, memoryIds).catch(() => {});
       }
       return reply.send(data);
     }
