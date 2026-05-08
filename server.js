@@ -81,43 +81,79 @@ async function saveContext(messages, env) {
 
 async function saveMemories(content, env) {
   console.log('=== saveMemories called ===');
+  console.log('DEBUG: content length =', content.length);
+  console.log('DEBUG: content last 800 chars:', JSON.stringify(content.slice(-800)));
+
   function formatTags(rawTags) {
     if (!rawTags || typeof rawTags !== 'string') return null;
     if (rawTags.startsWith('{') && rawTags.endsWith('}')) return rawTags;
     const items = rawTags.split(',').map(t => t.trim()).filter(t => t);
     return '{' + items.map(t => '"' + t.replace(/"/g, '\\"') + '"').join(',') + '}';
   }
+
   const blockStart = '<memory>';
   const blockEnd = '</memory>';
   const startIdx = content.indexOf(blockStart);
-  if (startIdx === -1) return;
+  console.log('DEBUG: startIdx =', startIdx);
+  if (startIdx === -1) {
+    console.log('DEBUG: <memory> not found, exiting');
+    return;
+  }
+
   const endIdx = content.indexOf(blockEnd, startIdx);
-  if (endIdx === -1) return;
+  console.log('DEBUG: endIdx =', endIdx);
+  if (endIdx === -1) {
+    console.log('DEBUG: </memory> not found, exiting');
+    return;
+  }
+
   const block = content.substring(startIdx + blockStart.length, endIdx).trim();
-  if (!block) return;
+  console.log('DEBUG: memory block content:', JSON.stringify(block));
+  if (!block) {
+    console.log('DEBUG: memory block is empty, exiting');
+    return;
+  }
+
   const lines = block.split('\n').map(l => l.trim()).filter(l => l);
+  console.log('DEBUG: number of lines in block:', lines.length);
+  console.log('DEBUG: lines:', JSON.stringify(lines));
 
   let processed = 0;
   const MAX_MEMORIES_PER_REQUEST = 5;
 
   for (const line of lines) {
-    if (processed >= MAX_MEMORIES_PER_REQUEST) break;
-    if (line.startsWith('//')) continue;
-line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
-    if (!line.startsWith('-') && !line.startsWith('•') && !line.startsWith('*')) continue;
-    const lineContent = line.replace(/^[-•*]\s*/, '');
+    console.log('DEBUG: processing line:', JSON.stringify(line));
+    if (processed >= MAX_MEMORIES_PER_REQUEST) {
+      console.log('DEBUG: max memories per request reached, stopping');
+      break;
+    }
+    if (line.startsWith('//')) {
+      console.log('DEBUG: skipping comment line');
+      continue;
+    }
+
+    // 统一处理项目符号
+    let normalizedLine = line.replace(/^•\s*/, '- ').replace(/^\*\s*/, '- ');
+    console.log('DEBUG: normalized line:', JSON.stringify(normalizedLine));
+
+    if (!normalizedLine.startsWith('-') && !normalizedLine.startsWith('•') && !normalizedLine.startsWith('*')) {
+      console.log('DEBUG: line does not start with - or • or *, skipping');
+      continue;
+    }
+
+    const lineContent = normalizedLine.replace(/^[-•*]\s*/, '');
+    console.log('DEBUG: lineContent:', JSON.stringify(lineContent));
 
     try {
-
       // --- UPDATE ---
       const updateMatch = lineContent.match(/\[UPDATE:(\d+)\](.+)/);
       if (updateMatch) {
+        console.log('DEBUG: matched UPDATE, id =', updateMatch[1]);
         const id = parseInt(updateMatch[1]);
         const newContent = updateMatch[2].trim();
         const embedding = await getEmbedding(newContent, env.SILICON_API_KEY);
         const updateData = { content: newContent, embedding, updated_at: new Date().toISOString() };
 
-        // 解析所有可能标签
         const valenceMatch = lineContent.match(/\[V:([\d.]+)\]/);
         if (valenceMatch) updateData.valence = parseFloat(valenceMatch[1]);
         const arousalMatch = lineContent.match(/\[A:([\d.]+)\]/);
@@ -127,7 +163,7 @@ line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
         const domainMatch = lineContent.match(/\[D:([^\]]+)\]/);
         if (domainMatch) updateData.domain = domainMatch[1];
         const tagsMatch = lineContent.match(/\[T:([^\]]+)\]/);
-        if (tagsMatch) updateData.tags = tagsMatch[1];
+        if (tagsMatch) updateData.tags = formatTags(tagsMatch[1]);
         const resolvedMatch = lineContent.match(/\[R:(true|false)\]/);
         if (resolvedMatch) {
           updateData.is_resolved = resolvedMatch[1] === 'true';
@@ -145,7 +181,6 @@ line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
         const sourceMatch = lineContent.match(/\[S:([^\]]+)\]/);
         if (sourceMatch) updateData.source_bucket_id = sourceMatch[1];
 
-        // 重新计算衰减分数
         const currentImportance = updateData.importance || 5;
         const currentArousal = updateData.arousal || 0.5;
         const currentIsPinned = updateData.is_pinned || false;
@@ -162,6 +197,7 @@ line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
           },
           body: JSON.stringify(updateData),
         });
+        console.log('DEBUG: UPDATE successful for id', id);
         processed++;
         continue;
       }
@@ -169,6 +205,7 @@ line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
       // --- DELETE ---
       const deleteMatch = lineContent.match(/\[DELETE:(\d+)\]/);
       if (deleteMatch) {
+        console.log('DEBUG: matched DELETE, id =', deleteMatch[1]);
         const id = parseInt(deleteMatch[1]);
         await safeFetch(`${env.SUPABASE_URL}/rest/v1/memories?id=eq.${id}`, {
           method: 'DELETE',
@@ -177,6 +214,7 @@ line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
             'Authorization': `Bearer ${env.SUPABASE_KEY}`,
           },
         });
+        console.log('DEBUG: DELETE successful for id', id);
         processed++;
         continue;
       }
@@ -184,6 +222,7 @@ line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
       // --- ADD (完整新格式) ---
       const addMatch = lineContent.match(/\[(\d{4}-\d{2}-\d{2})\]\[V:([\d.]+)\]\[A:([\d.]+)\]\[I:(\d+)\](?:\[D:([^\]]+)\])?(?:\[T:([^\]]+)\])?(?:\[F:(true|false)\])?(?:\[P:(true|false)\])?(?:\[R:(true|false)\])?(?:\[DG:(true|false)\])?(?:\[S:([^\]]+)\])?(.+)/);
       if (addMatch) {
+        console.log('DEBUG: matched ADD (full format)');
         const date = addMatch[1];
         const valence = parseFloat(addMatch[2]);
         const arousal = parseFloat(addMatch[3]);
@@ -215,7 +254,7 @@ line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
             arousal,
             importance,
             domain,
-            tags,
+            tags: formatTags(tags),
             is_resolved: isResolved,
             resolved: isResolved,
             is_pinned: isPinned,
@@ -229,6 +268,7 @@ line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
             last_accessed_at: new Date().toISOString(),
           }),
         });
+        console.log('DEBUG: ADD successful');
         processed++;
         continue;
       }
@@ -236,6 +276,7 @@ line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
       // --- 兼容旧格式 ---
       const oldAddMatch = lineContent.match(/\[(\d{4}-\d{2}-\d{2})\](.+)/);
       if (oldAddMatch) {
+        console.log('DEBUG: matched ADD (old format)');
         const date = oldAddMatch[1];
         const newContent = oldAddMatch[2].trim();
         const embedding = await getEmbedding(newContent, env.SILICON_API_KEY);
@@ -269,12 +310,18 @@ line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
             last_accessed_at: new Date().toISOString(),
           }),
         });
+        console.log('DEBUG: ADD (old format) successful');
         processed++;
+        continue;
       }
+
+      console.log('DEBUG: line did not match any pattern:', JSON.stringify(lineContent));
     } catch (innerError) {
       console.error('Save memory entry error:', innerError.message);
+      console.error('DEBUG: error stack:', innerError.stack);
     }
   }
+  console.log('DEBUG: saveMemories finished, processed =', processed);
 }
 
 // ================== 主路由 ==================
