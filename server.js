@@ -103,11 +103,10 @@ async function saveMemories(content, env) {
   for (const line of lines) {
     if (processed >= MAX_MEMORIES_PER_REQUEST) break;
     if (line.startsWith('//')) continue;
+line = line.replace(/^•/, '- ').replace(/^\*/, '- ');
     if (!line.startsWith('-') && !line.startsWith('•') && !line.startsWith('*')) continue;
 
     try {
-      let lineContent = line.replace(/^[-•*]\s*/, '');
-lineContent = '- ' + lineContent.replace(/^[-•*]\s*/, '');
 
       // --- UPDATE ---
       const updateMatch = lineContent.match(/\[UPDATE:(\d+)\](.+)/);
