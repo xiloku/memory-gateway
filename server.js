@@ -62,6 +62,11 @@ async function getEmbedding(text, apiKey) {
 async function saveContext(messages, env) {
   for (const msg of messages) {
     if (msg.role === 'user' || msg.role === 'assistant') {
+// 防爆门：单条上下文最大 5000 字符，超出部分截断
+      const safeContent = msg.content.length > 5000 
+        ? msg.content.substring(0, 5000) + '...（内容过长已截断）' 
+        : msg.content;
+
       await safeFetch(`${env.SUPABASE_URL}/rest/v1/conversations`, {
         method: 'POST',
         headers: {
