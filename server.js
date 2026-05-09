@@ -422,11 +422,62 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
     saveContext(userMessages, process.env).catch(e => fastify.log.error(e));
   }
 
-  // 5. 构建 enhancedMessages
+  // 5. 视觉拦截：将图片转为文字描述，再构建增强消息
+  const processedMessages = [];
+  for (const msg of messages) {
+    if (typeof msg.content === 'string') {
+      processedMessages.push(msg);
+      continue;
+    }
+    if (Array.isArray(msg.content)) {
+      const newContent = [];
+      for (const part of msg.content) {
+        if (part.type === 'image_url' && part.image_url?.url?.startsWith('data:image')) {
+          const base64Data = part.image_url.url.split(';base64,')[1] || part.image_url.url.split(',')[1];
+          try {
+            const visionRes = await safeFetch(
+              'https://api.hunyuan.cloud.tencent.com/v1/chat/completions',
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${process.env.TENCENT_VISION_API_KEY}`,
+                },
+                body: JSON.stringify({
+                  model: 'hunyuan-vision',
+                  messages: [{
+                    role: 'user',
+                    content: [
+                      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Data}` } },
+                      { type: 'text', text: '请客观描述图片内容，不要添加评价或臆测。' }
+                    ]
+                  }]
+                }),
+              },
+              30000
+            );
+            const visionData = await visionRes.json();
+            const description = visionData.choices?.[0]?.message?.content || '无法识别这张图片。';
+            newContent.push({ type: 'text', text: `[用户发来了一张图片，内容描述：${description}]` });
+          } catch (err) {
+            fastify.log.error('Vision intercept error:', err.message);
+            newContent.push({ type: 'text', text: '[用户发来了一张图片，但暂时无法识别。]' });
+          }
+        } else {
+          newContent.push(part);
+        }
+      }
+      processedMessages.push({ ...msg, content: newContent });
+    } else {
+      processedMessages.push(msg);
+    }
+  }
+
+  // 5.1 构建 enhancedMessages（使用处理后的消息）
   const enhancedMessages = [
     { role: 'system', content: systemContent },
     ...recentContext,
-    ...messages.filter(m => m.role !== 'system'),
+    ...processedMessages.filter(m => m.role !== 'system'),
   ];
 
   // 6. 调用 LLM
