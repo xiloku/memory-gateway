@@ -501,6 +501,13 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
     cleanedMessages.push(...enhancedMessages);
   }
 
+  // 发送前瘦身：截断所有超过 3000 字符的单条消息，防止 Token 爆炸
+  for (const msg of enhancedMessages) {
+    if (typeof msg.content === 'string' && msg.content.length > 3000) {
+      msg.content = msg.content.substring(0, 3000) + '...（内容过长已截断）';
+    }
+  }
+
   // 6. 调用 LLM
   const llmPayload = {
     model: 'Pro/zai-org/GLM-5.1',
