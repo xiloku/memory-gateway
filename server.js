@@ -526,6 +526,57 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
   }
 });
 
+// 视觉识别路由：将图片转为文字描述
+fastify.post('/v1/vision', async (request, reply) => {
+  const { image_base64 } = request.body;
+  
+  if (!image_base64) {
+    return reply.status(400).send({ error: '缺少 image_base64 参数' });
+  }
+
+  try {
+    const visionResponse = await safeFetch(
+      'https://api.hunyuan.cloud.tencent.com/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.TENCENT_VISION_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'hunyuan-vision',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:image/jpeg;base64,${image_base64}`
+                  }
+                },
+                {
+                  type: 'text',
+                  text: '请用中文描述这张图片的内容，尽量详细但不要添加任何评价或臆测。'
+                }
+              ]
+            }
+          ]
+        }),
+      },
+      30000
+    );
+
+    const data = await visionResponse.json();
+    const description = data.choices?.[0]?.message?.content || '无法识别图片内容';
+    
+    return reply.send({ description });
+  } catch (err) {
+    fastify.log.error('Vision API error:', err.message);
+    return reply.status(500).send({ error: '图片识别失败: ' + err.message });
+  }
+});
+
 // 启动服务
 const start = async () => {
   try {// 临时测试路由：验证记忆写入是否正常
