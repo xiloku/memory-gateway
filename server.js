@@ -74,7 +74,7 @@ async function saveContext(messages, env) {
           'apikey': env.SUPABASE_KEY,
           'Authorization': `Bearer ${env.SUPABASE_KEY}`,
         },
-        body: JSON.stringify({ role: msg.role, content: safecontent }),
+        body: JSON.stringify({ role: msg.role, content: safeContent }),
       }).catch(e => console.error('Context save failed:', e.message));
     }
   }
