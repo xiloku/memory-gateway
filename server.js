@@ -5,7 +5,10 @@ import SYSTEM_PROMPT from './src/config/prompt.js';  // 这一行是修改重点
 
 // 加载系统提示词（prompt.js）
 
-const fastify = Fastify({ logger: true });
+const fastify = Fastify({ 
+  logger: true,
+  bodyLimit: 52428800 // 50MB (50 * 1024 * 1024)
+});
 
 // ================== 工具函数 ==================
 const safeFetch = async (url, options = {}, timeout = 30000) => {
