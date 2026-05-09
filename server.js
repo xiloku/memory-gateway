@@ -480,10 +480,23 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
     ...processedMessages.filter(m => m.role !== 'system'),
   ];
 
+  // 视觉友好遗忘：将图片描述视为普通对话碎片，依赖上下文窗口自然淘汰
+  const cleanedMessages = [];
+  const MAX_CONTEXT_MESSAGES = 40; // user + assistant 总条数，约等于20轮对话
+
+  // 只保留系统消息 + 最近的消息，旧对话（含图片描述）会自动移出窗口
+  if (enhancedMessages.length > MAX_CONTEXT_MESSAGES) {
+    const systemMessages = enhancedMessages.filter(m => m.role === 'system');
+    const recentMessages = enhancedMessages.slice(-MAX_CONTEXT_MESSAGES);
+    cleanedMessages.push(...systemMessages, ...recentMessages);
+  } else {
+    cleanedMessages.push(...enhancedMessages);
+  }
+
   // 6. 调用 LLM
   const llmPayload = {
     model: 'Pro/zai-org/GLM-5.1',
-    messages: enhancedMessages,
+    messages: cleanedMessages,
     stream,
     max_tokens: 8192, // 先保守一点，后面可调大
   };
