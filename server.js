@@ -25,8 +25,7 @@ const safeFetch = async (url, options = {}, timeout = 15000) => {
     clearTimeout(timeoutId);
   }
 };
-
-// ================== 搜索路由 ==================
+// ================== 搜索路由（博查 Web Search） ==================
 fastify.post('/search', async (request, reply) => {
   const { query } = request.body;
 
@@ -36,24 +35,34 @@ fastify.post('/search', async (request, reply) => {
 
   try {
     const searchRes = await safeFetch(
-      `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`,
-      { method: 'GET', headers: { 'Content-Type': 'application/json' } },
+      'https://api.bochaai.com/v1/web-search',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.BOCHA_API_KEY}`
+        },
+        body: JSON.stringify({
+          query: query,
+          count: 5
+        })
+      },
       10000
     );
 
     const data = await searchRes.json();
-    const results = data.Results?.slice(0, 5) || [];
+    const results = data.results || [];
 
     return reply.send({
       query,
       results: results.map(r => ({
-        title: r.Text,
-        url: r.FirstURL,
-        snippet: r.Text
+        title: r.title,
+        url: r.url,
+        snippet: r.snippet || r.summary || ''
       })),
       count: results.length,
       summary: results.length > 0
-        ? results.map(r => `- ${r.Text}`).join('\n')
+        ? results.map(r => `- ${r.title}: ${r.snippet || r.summary || ''}`).join('\n')
         : '未找到相关结果。'
     });
   } catch (err) {
