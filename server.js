@@ -342,6 +342,42 @@ async function saveMemories(content, env, memoryIds) {
   console.log('DEBUG: saveMemories finished, processed =', processed);
 }
 
+// 状态同步路由：接收来自遥的本地脚本的状态更新
+fastify.post('/v1/status', async (request, reply) => {
+  const { status, timestamp } = request.body;
+
+  if (!status) {
+    return reply.status(400).send({ error: '缺少 status 参数' });
+  }
+
+  try {
+    // 将状态作为一条特殊的系统消息存入对话上下文
+    const statusMessage = `[遥的状态：${status}]`;
+
+    await safeFetch(`${process.env.SUPABASE_URL}/rest/v1/conversations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': process.env.SUPABASE_KEY,
+        'Authorization': `Bearer ${process.env.SUPABASE_KEY}`,
+      },
+      body: JSON.stringify({
+        role: 'system',
+        content: statusMessage,
+      }),
+    });
+
+    fastify.log.info(`Status synced: ${status}`);
+    return reply.send({ success: true, status: statusMessage });
+  } catch (err) {
+    fastify.log.error('Status sync failed:', err.message);
+    return reply.status(500).send({ error: '状态同步失败' });
+  }
+});
+
+// 视觉识别路由：将图片转为文字描述
+fastify.post('/v1/vision', async (request, reply) => {
+
 // ================== 主路由 ==================
 fastify.post('/v1/chat/completions', async (request, reply) => {
   const { messages, stream = false } = request.body;
