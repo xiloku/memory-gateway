@@ -379,6 +379,31 @@ fastify.post('/v1/status', async (request, reply) => {
 fastify.post('/v1/chat/completions', async (request, reply) => {
   const { messages, stream = false } = request.body;
 
+  // 联网搜索拦截：检测 <search> 标签并调用搜索微服务
+  const lastUserMsg = messages.filter(m => m.role === 'user').pop();
+  if (lastUserMsg?.content?.includes('<search>')) {
+    const searchMatch = lastUserMsg.content.match(/<search>(.*?)<\/search>/);
+    if (searchMatch) {
+      const query = searchMatch[1].trim();
+      try {
+        const searchRes = await fetch('http://localhost:3002/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query })
+        });
+        const searchData = await searchRes.json();
+        const summary = searchData.summary || '未找到相关结果。';
+        
+        messages[messages.length - 1] = {
+          ...lastUserMsg,
+          content: `[系统提示：以下是关于"${query}"的搜索结果]\n${summary}\n\n[请根据以上搜索结果回答用户的问题]`
+        };
+      } catch (err) {
+        fastify.log.error('搜索微服务调用失败:', err);
+      }
+    }
+  }
+
   // 1. 系统提示
   const now = new Date();
   const timeStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
