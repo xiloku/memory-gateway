@@ -11,6 +11,32 @@ const fastify = Fastify({
 });
 
 // ================== 工具函数 ==================
+// 获取与上一条用户消息的时间间隔提示
+async function getTimeAwarenessHint(env) {
+  try {
+    const ctxResponse = await safeFetch(
+      `${env.SUPABASE_URL}/rest/v1/conversations?select=role,created_at&order=created_at.desc&limit=50`,
+      { headers: { apikey: env.SUPABASE_KEY, Authorization: `Bearer ${env.SUPABASE_KEY}` } }
+    );
+    const ctxData = await ctxResponse.json();
+    const userMessages = ctxData.filter(m => m.role === 'user');
+    
+    if (userMessages.length >= 2) {
+      const lastMsgTime = new Date(userMessages[0].created_at);
+      const prevMsgTime = new Date(userMessages[1].created_at);
+      const diffMinutes = Math.round((lastMsgTime - prevMsgTime) / 60000);
+      
+      if (diffMinutes > 60) {
+        const now = new Date();
+        const timeStr = `${now.getHours()}点${now.getMinutes()}分`;
+        return `[系统提示：距离遥上一条消息已经过去了${Math.round(diffMinutes / 60)}小时，现在是${timeStr}。她可能刚忙完，或者又在熬夜。请根据时间变化自然地关心她。]`;
+      }
+    }
+    return '';
+  } catch (e) {
+    return '';
+  }
+}
 const safeFetch = async (url, options = {}, timeout = 30000) => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -408,6 +434,12 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
   const now = new Date();
   const timeStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
   let systemContent = SYSTEM_PROMPT + `\n[当前时间: ${timeStr}]`;
+
+  // 时间感知：自动检测与上一条消息的时间间隔
+  const timeHint = await getTimeAwarenessHint(process.env);
+  if (timeHint) {
+    systemContent += '\n' + timeHint;
+  }
 
   // 2. 检索记忆
   const queryText = messages.filter(m => m.role === 'user').pop()?.content || '';
