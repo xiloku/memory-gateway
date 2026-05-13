@@ -430,6 +430,31 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
     }
   }
 
+  // 网页抓取拦截：检测 <fetch> 标签并调用搜索微服务的 /fetch
+  const lastUserMsg2 = messages.filter(m => m.role === 'user').pop();
+  if (lastUserMsg2?.content?.includes('<fetch>')) {
+    const fetchMatch = lastUserMsg2.content.match(/<fetch>(.*?)<\/fetch>/);
+    if (fetchMatch) {
+      const fetchUrl = fetchMatch[1].trim();
+      try {
+        const fetchRes = await fetch('http://search-service:3001/fetch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: fetchUrl })
+        });
+        const fetchData = await fetchRes.json();
+        const fetchedInfo = `网页标题/主要内容：${fetchData.text || '(无文本)'}\n图片描述：${(fetchData.images || []).join('；')}`;
+        
+        messages[messages.length - 1] = {
+          ...lastUserMsg2,
+          content: `[系统提示：以下是网页 ${fetchUrl} 的内容]\n${fetchedInfo}\n\n[请根据以上内容回答用户的问题]`
+        };
+      } catch (err) {
+        fastify.log.error('网页抓取失败:', err);
+      }
+    }
+  }
+
   // 1. 系统提示
   const now = new Date();
   const timeStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
