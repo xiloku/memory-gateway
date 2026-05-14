@@ -412,7 +412,7 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
     if (searchMatch) {
       const query = searchMatch[1].trim();
       try {
-        const searchRes = await fetch('http://u80fpugk88c9s0iauw7ilktj-170453125433:3001/search', {
+        const searchRes = await fetch('http://search-service:3001/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query })
