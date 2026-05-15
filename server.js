@@ -405,52 +405,58 @@ fastify.post('/v1/status', async (request, reply) => {
 fastify.post('/v1/chat/completions', async (request, reply) => {
   const { messages, stream = false } = request.body;
 
-  // 联网搜索拦截：检测 <search> 标签并调用搜索微服务
-  const lastUserMsg = messages.filter(m => m.role === 'user').pop();
-  if (lastUserMsg?.content?.includes('<search>')) {
-    const searchMatch = lastUserMsg.content.match(/<search>(.*?)<\/search>/);
-    if (searchMatch) {
-      const query = searchMatch[1].trim();
-      try {
-        const searchRes = await fetch('http://search-service:3001/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query })
-        });
-        const searchData = await searchRes.json();
-        const summary = searchData.summary || '未找到相关结果。';
-        
-        messages[messages.length - 1] = {
-          ...lastUserMsg,
-          content: `[系统提示：以下是关于"${query}"的搜索结果]\n${summary}\n\n[请根据以上搜索结果回答用户的问题]`
-        };
-      } catch (err) {
-        fastify.log.error('搜索微服务调用失败:', err);
+  // 联网搜索拦截：检测所有消息中的 <search> 标签并调用搜索微服务
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.content?.includes('<search>')) {
+      const searchMatch = msg.content.match(/<search>(.*?)<\/search>/);
+      if (searchMatch) {
+        const query = searchMatch[1].trim();
+        try {
+          const searchRes = await fetch('http://search-service:3001/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+          });
+          const searchData = await searchRes.json();
+          const summary = searchData.summary || '未找到相关结果。';
+          
+          messages[i] = {
+            ...msg,
+            content: `[系统提示：以下是关于"${query}"的搜索结果]\n${summary}\n\n[请根据以上搜索结果回答用户的问题]`
+          };
+        } catch (err) {
+          fastify.log.error('搜索微服务调用失败:', err);
+        }
+        break; // 只处理第一个包含 <search> 的消息
       }
     }
   }
 
-  // 网页抓取拦截：检测 <fetch> 标签并调用搜索微服务的 /fetch
-  const lastUserMsg2 = messages.filter(m => m.role === 'user').pop();
-  if (lastUserMsg2?.content?.includes('<fetch>')) {
-    const fetchMatch = lastUserMsg2.content.match(/<fetch>(.*?)<\/fetch>/);
-    if (fetchMatch) {
-      const fetchUrl = fetchMatch[1].trim();
-      try {
-        const fetchRes = await fetch('http://search-service:3001/fetch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: fetchUrl })
-        });
-        const fetchData = await fetchRes.json();
-        const fetchedInfo = `网页标题/主要内容：${fetchData.text || '(无文本)'}\n图片描述：${(fetchData.images || []).join('；')}`;
-        
-        messages[messages.length - 1] = {
-          ...lastUserMsg2,
-          content: `[系统提示：以下是网页 ${fetchUrl} 的内容]\n${fetchedInfo}\n\n[请根据以上内容回答用户的问题]`
-        };
-      } catch (err) {
-        fastify.log.error('网页抓取失败:', err);
+  // 网页抓取拦截：检测所有消息中的 <fetch> 标签并调用搜索微服务的 /fetch
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.content?.includes('<fetch>')) {
+      const fetchMatch = msg.content.match(/<fetch>(.*?)<\/fetch>/);
+      if (fetchMatch) {
+        const fetchUrl = fetchMatch[1].trim();
+        try {
+          const fetchRes = await fetch('http://search-service:3001/fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: fetchUrl })
+          });
+          const fetchData = await fetchRes.json();
+          const fetchedInfo = `网页主要内容：${fetchData.text || '(无文本)'}\n图片描述：${(fetchData.images || []).join('；')}`;
+          
+          messages[i] = {
+            ...msg,
+            content: `[系统提示：以下是网页 ${fetchUrl} 的内容]\n${fetchedInfo}\n\n[请根据以上内容回答用户的问题]`
+          };
+        } catch (err) {
+          fastify.log.error('网页抓取失败:', err);
+        }
+        break; // 只处理第一个包含 <fetch> 的消息
       }
     }
   }
