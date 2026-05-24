@@ -629,26 +629,38 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
     }
   }
 
-  // 6. 调用 LLM
+  // 6. 调用 LLM 模型路由：根据模型名自动切换 API 地址
+  const modelName = body.model || 'Pro/zai-org/GLM-5.1';
+
   const llmPayload = {
-    model: 'Pro/zai-org/GLM-5.1',
+    model: modelName,
     messages: cleanedMessages,
     stream,
-    max_tokens: 8192, // 先保守一点，后面可调大
+    max_tokens: 8192,
   };
+
+  let llmApiUrl = 'https://api.siliconflow.cn/v1/chat/completions';
+  let llmApiKey = process.env.SILICON_API_KEY;
+
+  // 如果模型名以 "venice:" 开头，走 OpenRouter 代理
+  if (modelName.startsWith('venice:')) {
+    llmApiUrl = 'http://localhost:8081/v1/chat/completions'; // 本机 Nginx 代理
+    llmApiKey = process.env.OPENROUTER_API_KEY;
+    llmPayload.model = modelName.replace('venice:', ''); // 去掉前缀，发送真实模型名给 OpenRouter
+  }
 
   try {
     const llmResponse = await safeFetch(
-      'https://api.siliconflow.cn/v1/chat/completions',
+      llmApiUrl,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.SILICON_API_KEY}`,
+          'Authorization': `Bearer ${llmApiKey}`,
         },
         body: JSON.stringify(llmPayload),
       },
-      600000 // 10分钟超时，GLM 大回复也够
+      600000
     );
 
     if (stream) {
