@@ -403,6 +403,7 @@ fastify.post('/v1/status', async (request, reply) => {
 
 // ================== 主路由 ==================
 fastify.post('/v1/chat/completions', async (request, reply) => {
+const body = request.body;
   const { messages, stream = false } = request.body;
 
   // 联网搜索拦截：检测所有消息中的 <search> 标签并调用搜索微服务
