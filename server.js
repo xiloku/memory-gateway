@@ -645,7 +645,7 @@ const body = request.body;
 
   // 如果模型名以 "venice:" 开头，走 OpenRouter 代理
   if (modelName.startsWith('venice:')) {
-llmApiUrl = 'http://host.docker.internal:8081/v1/chat/completions'; // 本机 Nginx 代理（容器内访问宿主机）
+llmApiUrl = 'http://45.32.36.220:8081/v1/chat/completions'; // 本机 Nginx 代理（通过宿主机真实 IP）
     llmApiKey = process.env.OPENROUTER_API_KEY;
     llmPayload.model = modelName.replace('venice:', ''); // 去掉前缀，发送真实模型名给 OpenRouter
   }
